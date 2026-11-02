@@ -1,0 +1,8 @@
+# One Boolean expression per line. Empty lines and comments are skipped.
+artificial AND intelligence
+(machine OR deep) AND learning
+climate AND change AND NOT fiction
+(quantum OR particle) AND physics
+software AND (testing OR verification)
+(retrieval OR search) AND engine AND NOT optimization
+"and" AND logic

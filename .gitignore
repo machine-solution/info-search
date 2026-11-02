@@ -1,0 +1,7 @@
+/build/
+/data/
+/index/
+/.venv-fineweb/
+/output.jsonl
+*.tmp
+

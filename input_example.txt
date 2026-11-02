@@ -1,0 +1,30 @@
+# Science
+(quantum AND (entanglement OR teleportation)) AND NOT (fiction OR movie)
+(black AND hole) AND (hawking OR radiation OR (accretion AND galaxy) OR (event AND horizon)) AND (physics OR astronomy) AND NOT movie
+(climate AND change) AND (ocean OR glacier OR carbon) AND NOT fiction
+(solar AND system) AND (mars OR jupiter OR saturn) AND NOT astrology
+((protein OR enzyme) AND (structure OR folding)) AND NOT recipe
+(ocean AND (biology OR ecosystem)) AND NOT (hotel OR cruise OR restaurant)
+(photosynthesis AND chlorophyll) AND (sunlight OR carbon) AND (biology OR plants)
+(pythagorean AND theorem) AND (geometry OR triangle) AND (proof OR equation)
+(plate AND tectonics) AND (earthquake OR volcano) AND (geology OR crust)
+
+# Computer science
+neural AND network AND backpropagation AND (training OR optimization) AND NOT biological
+computer AND ((sorting OR search) AND algorithm) AND (complexity OR performance) AND NOT advertisement
+(database AND (index OR indexing)) AND ((b AND tree) OR (sql AND query)) AND NOT book
+(compiler OR interpreter) AND (parsing OR optimization OR bytecode) AND NOT job
+((information AND retrieval) OR (search AND engine)) AND ((inverted AND index) OR query) AND NOT marketing
+
+# History, culture, and literature
+(roman OR greek) AND (mythology OR archaeology) AND NOT game
+(shakespeare OR hamlet OR macbeth) AND (play OR tragedy OR character) AND (analysis OR literature) AND NOT movie
+(french OR italian) AND renaissance AND (painting OR architecture) AND NOT restaurant
+(world AND war AND (second OR wwii)) AND (history OR archive OR museum) AND NOT game
+
+# Larger Boolean trees
+(((machine AND learning) OR (neural AND network) OR (artificial AND intelligence)) AND (algorithm OR model) AND (education OR tutorial OR research)) AND NOT (job OR hiring OR advertisement)
+(((quantum AND computing) OR (quantum AND computer)) AND (qubit OR algorithm OR cryptography)) AND NOT (stock OR investment)
+(((ancient AND egypt AND pharaoh) OR (roman AND empire AND emperor) OR (medieval AND europe AND castle)) AND (history OR archaeology OR museum)) AND NOT (hotel OR tour OR game)
+(((evolution AND biology AND darwin) OR (genetics AND inheritance AND gene) OR (natural AND selection AND species)) AND (education OR textbook OR university)) AND NOT (politics OR religion)
+(renewable AND energy) AND ((solar AND power) OR (wind AND turbine)) AND (engineering OR technology OR research) AND NOT (advertisement OR stock OR investment)

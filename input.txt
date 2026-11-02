@@ -1,0 +1,3 @@
+# Science
+quantum AND NOT (fiction AND NOT science)
+quantum AND (NOT fiction OR science)
