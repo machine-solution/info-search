@@ -8,10 +8,6 @@ const errorBox = document.querySelector("#error-box");
 const stateRoot = document.querySelector("#engine-state");
 const stateText = document.querySelector("#engine-state-text");
 const resultSummary = document.querySelector("#result-summary");
-const documentsCount = document.querySelector("#documents-count");
-const termsCount = document.querySelector("#terms-count");
-const searchTime = document.querySelector("#search-time");
-const returnedCount = document.querySelector("#returned-count");
 
 let activeRequest = null;
 
@@ -39,7 +35,7 @@ function clearError() {
 
 function setLoading(loading) {
   searchButton.disabled = loading;
-  searchButton.querySelector("span:first-child").textContent = loading ? "Ищем…" : "Найти";
+  searchButton.textContent = loading ? "Ищем…" : "Найти";
   if (!loading) return;
   resultsRoot.replaceChildren(...Array.from({ length: 3 }, () => {
     const row = document.createElement("div");
@@ -47,6 +43,14 @@ function setLoading(loading) {
     return row;
   }));
   resultSummary.textContent = "Запрос исполняется…";
+  showTreePlaceholder("Строится дерево запроса…");
+}
+
+function showTreePlaceholder(text) {
+  const placeholder = document.createElement("div");
+  placeholder.className = "tree-placeholder";
+  placeholder.textContent = text;
+  treeRoot.replaceChildren(placeholder);
 }
 
 function safeHttpUrl(value) {
@@ -64,12 +68,7 @@ function renderResults(results) {
   if (results.length === 0) {
     const empty = document.createElement("div");
     empty.className = "empty-state";
-    const icon = document.createElement("span");
-    icon.setAttribute("aria-hidden", "true");
-    icon.textContent = "∅";
-    const text = document.createElement("p");
-    text.textContent = "По этому выражению ничего не найдено";
-    empty.append(icon, text);
+    empty.textContent = "По этому выражению ничего не найдено";
     resultsRoot.append(empty);
     return;
   }
@@ -78,7 +77,6 @@ function renderResults(results) {
   for (const result of results) {
     const article = document.createElement("article");
     article.className = "result-card";
-    article.style.animationDelay = `${Math.min(result.rank - 1, 8) * 32}ms`;
 
     const rank = document.createElement("div");
     rank.className = "result-rank";
@@ -151,8 +149,6 @@ async function loadMetadata() {
     const response = await fetch("/api/meta", { cache: "no-store" });
     const data = await response.json();
     if (!response.ok || !data.ok) throw new Error(data.error || "Индекс недоступен");
-    documentsCount.textContent = integerFormatter.format(data.documents);
-    termsCount.textContent = integerFormatter.format(data.terms);
     setEngineState("ready", "Индекс загружен · сервер готов");
     return true;
   } catch (error) {
@@ -192,14 +188,13 @@ async function runSearch() {
 
     renderResults(data.results);
     renderTree(data.query_tree);
-    searchTime.textContent = `${decimalFormatter.format(data.search_ms)} мс`;
-    returnedCount.textContent = integerFormatter.format(data.returned);
-    resultSummary.textContent = data.returned === 0
-      ? "Совпадений в пределах запроса нет"
-      : `Показано ${integerFormatter.format(data.returned)} · всего ${decimalFormatter.format(data.total_ms)} мс`;
+    resultSummary.textContent = `${integerFormatter.format(data.returned)} результатов · ` +
+      `retrieval ${decimalFormatter.format(data.search_ms)} мс · ` +
+      `всего ${decimalFormatter.format(data.total_ms)} мс`;
   } catch (error) {
     if (error.name === "AbortError") return;
     resultsRoot.replaceChildren();
+    showTreePlaceholder("Дерево не построено");
     showError(error.message);
     resultSummary.textContent = "Запрос не выполнен";
   } finally {
@@ -212,13 +207,4 @@ form.addEventListener("submit", (event) => {
   runSearch();
 });
 
-for (const example of document.querySelectorAll("[data-query]")) {
-  example.addEventListener("click", () => {
-    queryInput.value = example.dataset.query;
-    runSearch();
-  });
-}
-
-loadMetadata().then((ready) => {
-  if (ready) runSearch();
-});
+loadMetadata();

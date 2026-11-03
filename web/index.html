@@ -3,20 +3,13 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Локальный интерфейс корпусно-независимого булева поиска">
-  <title>Wikisearch — локальный поиск</title>
+  <title>Search Engine</title>
   <link rel="stylesheet" href="/app.css">
   <script src="/app.js" defer></script>
 </head>
 <body>
-  <header class="topbar">
-    <a class="brand" href="/" aria-label="Wikisearch — главная">
-      <span class="brand-mark" aria-hidden="true">W</span>
-      <span>
-        <strong>Wikisearch</strong>
-        <small>Boolean retrieval engine</small>
-      </span>
-    </a>
+  <header>
+    <strong>Search Engine</strong>
     <div class="engine-state" id="engine-state">
       <span class="state-dot" aria-hidden="true"></span>
       <span id="engine-state-text">Подключение к индексу…</span>
@@ -24,99 +17,40 @@
   </header>
 
   <main>
-    <section class="search-stage" aria-labelledby="page-title">
-      <div class="stage-copy">
-        <p class="eyebrow">Локальный интерфейс · milestone 1</p>
-        <h1 id="page-title">Ищи в корпусе.<br><span>Смотри, как исполняется запрос.</span></h1>
-        <p class="intro">Булевый поиск по 10,6 млн документов. Поддерживаются
-          <code>AND</code>, <code>OR</code>, <code>NOT</code>, скобки и неявный AND.</p>
+    <form class="search-form" id="search-form">
+      <div class="query-control">
+        <label for="query-input">Запрос</label>
+        <input id="query-input" name="query" type="search" autocomplete="off"
+               spellcheck="false" placeholder="artificial AND (intelligence OR learning)"
+               required autofocus>
       </div>
-
-      <form class="search-form" id="search-form">
-        <label for="query-input">Поисковый запрос</label>
-        <div class="search-line">
-          <input id="query-input" name="query" type="search" autocomplete="off"
-                 spellcheck="false"
-                 value="artificial AND (intelligence OR learning) AND NOT fiction"
-                 placeholder="Например: climate AND (change OR policy)" required>
-          <div class="limit-control">
-            <label for="limit-input">Лимит</label>
-            <input id="limit-input" name="limit" type="number" min="1" max="100" value="10">
-          </div>
-          <button class="search-button" type="submit">
-            <span>Найти</span>
-            <span aria-hidden="true">↗</span>
-          </button>
-        </div>
-        <div class="examples" aria-label="Примеры запросов">
-          <span>Попробовать:</span>
-          <button type="button" data-query="climate AND (change OR policy)">climate policy</button>
-          <button type="button" data-query="python AND programming AND NOT snake">python programming</button>
-          <button type="button" data-query="(machine AND learning) OR (neural AND network)">machine learning</button>
-        </div>
-      </form>
-    </section>
-
-    <section class="metrics" aria-label="Статистика поиска">
-      <div class="metric">
-        <span>Документов в индексе</span>
-        <strong id="documents-count">—</strong>
+      <div class="limit-control">
+        <label for="limit-input">Лимит</label>
+        <input id="limit-input" name="limit" type="number" min="1" max="100" value="10">
       </div>
-      <div class="metric">
-        <span>Термов в словаре</span>
-        <strong id="terms-count">—</strong>
-      </div>
-      <div class="metric">
-        <span>Время retrieval</span>
-        <strong id="search-time">—</strong>
-      </div>
-      <div class="metric">
-        <span>Возвращено</span>
-        <strong id="returned-count">—</strong>
-      </div>
-    </section>
+      <button class="search-button" type="submit">Найти</button>
+    </form>
 
     <div class="feedback error" id="error-box" role="alert" hidden></div>
 
     <section class="workspace" aria-label="Результаты и дерево запроса">
       <div class="results-panel">
         <div class="section-heading">
-          <div>
-            <p class="eyebrow">Выдача</p>
-            <h2>Результаты поиска</h2>
-          </div>
-          <p id="result-summary" aria-live="polite">Введите запрос, чтобы начать поиск</p>
+          <h1>Результаты</h1>
+          <p id="result-summary" aria-live="polite">Запрос ещё не выполнялся</p>
         </div>
         <div id="results" class="results-list">
-          <div class="empty-state">
-            <span aria-hidden="true">⌕</span>
-            <p>Здесь появятся документы из индекса</p>
-          </div>
+          <div class="empty-state">Введите запрос и нажмите «Найти»</div>
         </div>
       </div>
 
       <aside class="tree-panel" aria-labelledby="tree-title">
-        <div class="section-heading compact">
-          <div>
-            <p class="eyebrow">Query plan</p>
-            <h2 id="tree-title">Дерево запроса</h2>
-          </div>
-        </div>
-        <p class="tree-help">AST после токенизации и учёта приоритетов операторов.</p>
+        <h2 id="tree-title">Query plan</h2>
         <div id="query-tree" class="query-tree">
-          <div class="tree-placeholder">Дерево будет построено серверным C++-парсером</div>
-        </div>
-        <div class="legend" aria-label="Обозначения дерева">
-          <span><i class="legend-dot operator"></i> оператор</span>
-          <span><i class="legend-dot term"></i> терм</span>
+          <div class="tree-placeholder">Дерево запроса появится после поиска</div>
         </div>
       </aside>
     </section>
   </main>
-
-  <footer>
-    <span>Corpus-independent C++20 search engine</span>
-    <span>Индекс читается с диска · top-K вычисляется лениво</span>
-  </footer>
 </body>
 </html>

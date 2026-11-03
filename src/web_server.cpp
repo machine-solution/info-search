@@ -41,9 +41,14 @@ constexpr std::size_t kMaximumQueryBytes = 4096;
 constexpr std::size_t kMaximumResults = 100;
 
 volatile std::sig_atomic_t stop_requested = 0;
+volatile std::sig_atomic_t listening_socket = -1;
 
 void request_stop(int) {
     stop_requested = 1;
+    if (listening_socket >= 0) {
+        close(static_cast<int>(listening_socket));
+        listening_socket = -1;
+    }
 }
 
 class Socket {
@@ -328,13 +333,13 @@ void handle_connection(int socket, const SearchEngine& engine,
 
         if (path == "/" || path == "/index.html") {
             const auto body = read_file(web_root / "index.html");
-            send_response(socket, 200, "OK", "text/html; charset=utf-8", body, true);
+            send_response(socket, 200, "OK", "text/html; charset=utf-8", body);
         } else if (path == "/app.css") {
             const auto body = read_file(web_root / "app.css");
-            send_response(socket, 200, "OK", "text/css; charset=utf-8", body, true);
+            send_response(socket, 200, "OK", "text/css; charset=utf-8", body);
         } else if (path == "/app.js") {
             const auto body = read_file(web_root / "app.js");
-            send_response(socket, 200, "OK", "text/javascript; charset=utf-8", body, true);
+            send_response(socket, 200, "OK", "text/javascript; charset=utf-8", body);
         } else if (path == "/api/meta") {
             const auto body = "{\"ok\":true,\"documents\":" +
                 std::to_string(engine.document_count()) + ",\"terms\":" +
@@ -395,6 +400,7 @@ int serve_web(const WebServerOptions& options) {
     if (listen(server.get(), 32) < 0) throw std::runtime_error("cannot listen on HTTP socket");
 
     stop_requested = 0;
+    listening_socket = server.get();
     std::signal(SIGINT, request_stop);
     std::signal(SIGTERM, request_stop);
     std::cerr << "loaded " << engine.document_count() << " documents, "
@@ -405,12 +411,14 @@ int serve_web(const WebServerOptions& options) {
     while (!stop_requested) {
         const int client_descriptor = accept(server.get(), nullptr, nullptr);
         if (client_descriptor < 0) {
+            if (stop_requested) break;
             if (errno == EINTR) continue;
             throw std::runtime_error("cannot accept HTTP connection");
         }
         Socket client(client_descriptor);
         handle_connection(client.get(), engine, options.web_root);
     }
+    listening_socket = -1;
     return 0;
 }
 
