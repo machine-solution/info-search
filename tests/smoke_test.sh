@@ -113,6 +113,28 @@ grep -q '"title":"Эрмитаж"' "$test_dir/web-results.json"
 grep -q '"title":"Нева"' "$test_dir/web-results.json"
 grep -q '"doc_id":2' "$test_dir/web-results.json"
 
+curl -fsS --get "http://127.0.0.1:$server_port/api/search" \
+  --data-urlencode 'query=санкт' --data-urlencode 'page_size=1' \
+  >"$test_dir/web-page-1.json"
+grep -q '"page":1' "$test_dir/web-page-1.json"
+grep -q '"rank":1' "$test_dir/web-page-1.json"
+grep -q '"external_id":"1#0"' "$test_dir/web-page-1.json"
+grep -q '"has_more":true' "$test_dir/web-page-1.json"
+cursor="$(sed -n 's/.*"cursor":"\([^"]*\)".*/\1/p' "$test_dir/web-page-1.json")"
+[[ -n "$cursor" ]]
+
+curl -fsS --get "http://127.0.0.1:$server_port/api/search" \
+  --data-urlencode "cursor=$cursor" >"$test_dir/web-page-2.json"
+grep -q '"page":2' "$test_dir/web-page-2.json"
+grep -q '"rank":2' "$test_dir/web-page-2.json"
+grep -q '"external_id":"3#0"' "$test_dir/web-page-2.json"
+! grep -q '"external_id":"1#0"' "$test_dir/web-page-2.json"
+
+page_size_status="$(curl -sS -o "$test_dir/web-page-size-error.json" -w '%{http_code}' \
+  --get "http://127.0.0.1:$server_port/api/search" \
+  --data-urlencode 'query=санкт' --data-urlencode 'page_size=1001')"
+[[ "$page_size_status" == "400" ]]
+
 status="$(curl -sS -o "$test_dir/web-error.json" -w '%{http_code}' --get \
   "http://127.0.0.1:$server_port/api/search" \
   --data-urlencode 'query=москва AND (' --data-urlencode 'limit=10')"

@@ -25,8 +25,8 @@
                required autofocus>
       </div>
       <div class="limit-control">
-        <label for="limit-input">Лимит</label>
-        <input id="limit-input" name="limit" type="number" min="1" max="100" value="10">
+        <label for="limit-input">На странице</label>
+        <input id="limit-input" name="page_size" type="number" min="1" max="1000" value="10">
       </div>
       <button class="search-button" type="submit">Найти</button>
     </form>
@@ -42,6 +42,11 @@
         <div id="results" class="results-list">
           <div class="empty-state">Введите запрос и нажмите «Найти»</div>
         </div>
+        <nav class="pagination" id="pagination" aria-label="Страницы результатов" hidden>
+          <button type="button" id="previous-page">Назад</button>
+          <span id="page-number">Страница 1</span>
+          <button type="button" id="next-page">Дальше</button>
+        </nav>
       </div>
 
       <aside class="tree-panel" aria-labelledby="tree-title">

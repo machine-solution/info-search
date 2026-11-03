@@ -384,6 +384,32 @@ private:
 
 }  // namespace
 
+struct SearchCursor::Impl {
+    explicit Impl(std::unique_ptr<DocIterator> iterator_value)
+        : iterator(std::move(iterator_value)) {}
+
+    std::unique_ptr<DocIterator> iterator;
+};
+
+SearchCursor::SearchCursor(std::unique_ptr<Impl> impl) : impl_(std::move(impl)) {}
+SearchCursor::SearchCursor(SearchCursor&&) noexcept = default;
+SearchCursor& SearchCursor::operator=(SearchCursor&&) noexcept = default;
+SearchCursor::~SearchCursor() = default;
+
+std::vector<std::uint32_t> SearchCursor::next_page(std::size_t page_size) {
+    std::vector<std::uint32_t> result;
+    result.reserve(page_size);
+    while (impl_->iterator->valid() && result.size() < page_size) {
+        result.push_back(impl_->iterator->doc_id());
+        impl_->iterator->next();
+    }
+    return result;
+}
+
+bool SearchCursor::has_more() const {
+    return impl_ != nullptr && impl_->iterator->valid();
+}
+
 SearchEngine::SearchEngine(const std::filesystem::path& index_directory)
     : index_directory_(index_directory),
       documents_file_(index_directory_ / "docs.bin", std::ios::binary) {
@@ -440,6 +466,11 @@ std::vector<std::uint32_t> SearchEngine::search_boolean(
 std::vector<std::uint32_t> SearchEngine::search_boolean(
     const QueryNode& query, std::size_t limit) const {
     if (limit == 0) return {};
+    auto cursor = start_boolean_query(query);
+    return cursor.next_page(limit);
+}
+
+SearchCursor SearchEngine::start_boolean_query(const QueryNode& query) const {
     std::function<std::unique_ptr<DocIterator>(const QueryNode&)> compile;
     compile = [&](const QueryNode& node) -> std::unique_ptr<DocIterator> {
         switch (node.type) {
@@ -498,14 +529,7 @@ std::vector<std::uint32_t> SearchEngine::search_boolean(
         throw std::logic_error("unknown boolean query node");
     };
 
-    auto iterator = compile(query);
-    std::vector<std::uint32_t> result;
-    result.reserve(limit);
-    while (iterator->valid() && result.size() < limit) {
-        result.push_back(iterator->doc_id());
-        iterator->next();
-    }
-    return result;
+    return SearchCursor(std::make_unique<SearchCursor::Impl>(compile(query)));
 }
 
 StoredDocument SearchEngine::document(std::uint32_t doc_id) const {

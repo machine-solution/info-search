@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
+#include <memory>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -11,6 +12,26 @@
 namespace wikisearch {
 
 struct QueryNode;
+
+class SearchCursor {
+public:
+    SearchCursor(SearchCursor&&) noexcept;
+    SearchCursor& operator=(SearchCursor&&) noexcept;
+    ~SearchCursor();
+
+    SearchCursor(const SearchCursor&) = delete;
+    SearchCursor& operator=(const SearchCursor&) = delete;
+
+    std::vector<std::uint32_t> next_page(std::size_t page_size);
+    bool has_more() const;
+
+private:
+    struct Impl;
+    explicit SearchCursor(std::unique_ptr<Impl> impl);
+
+    std::unique_ptr<Impl> impl_;
+    friend class SearchEngine;
+};
 
 struct StoredDocument {
     std::string external_id;
@@ -26,6 +47,7 @@ public:
         std::string_view expression, std::size_t limit) const;
     std::vector<std::uint32_t> search_boolean(
         const QueryNode& query, std::size_t limit) const;
+    SearchCursor start_boolean_query(const QueryNode& query) const;
     StoredDocument document(std::uint32_t doc_id) const;
     std::uint64_t document_count() const { return document_count_; }
     std::size_t term_count() const { return lexicon_.size(); }

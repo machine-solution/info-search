@@ -15,6 +15,7 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 
 #if defined(_WIN32)
 
@@ -38,7 +39,9 @@ namespace {
 
 constexpr std::size_t kMaximumRequestBytes = 64 * 1024;
 constexpr std::size_t kMaximumQueryBytes = 4096;
-constexpr std::size_t kMaximumResults = 100;
+constexpr std::size_t kMaximumPageSize = 1000;
+constexpr std::size_t kMaximumSessions = 32;
+constexpr auto kSessionLifetime = std::chrono::minutes(15);
 
 volatile std::sig_atomic_t stop_requested = 0;
 volatile std::sig_atomic_t listening_socket = -1;
@@ -231,24 +234,81 @@ std::map<std::string, std::string> parse_parameters(std::string_view query) {
     return parameters;
 }
 
-std::size_t parse_limit(const std::map<std::string, std::string>& parameters) {
-    const auto found = parameters.find("limit");
+std::size_t parse_page_size(const std::map<std::string, std::string>& parameters) {
+    auto found = parameters.find("page_size");
+    if (found == parameters.end()) found = parameters.find("limit");
     if (found == parameters.end() || found->second.empty()) return 10;
-    std::size_t consumed = 0;
-    const auto limit = std::stoull(found->second, &consumed);
-    if (consumed != found->second.size() || limit == 0 || limit > kMaximumResults) {
-        throw std::invalid_argument("limit must be between 1 and 100");
+    try {
+        std::size_t consumed = 0;
+        const auto page_size = std::stoull(found->second, &consumed);
+        if (consumed != found->second.size() || page_size == 0 ||
+            page_size > kMaximumPageSize) {
+            throw std::invalid_argument("page_size must be between 1 and 1000");
+        }
+        return static_cast<std::size_t>(page_size);
+    } catch (const std::out_of_range&) {
+        throw std::invalid_argument("page_size must be between 1 and 1000");
     }
-    return static_cast<std::size_t>(limit);
 }
 
-std::string search_json(const SearchEngine& engine, std::string_view expression,
-                        std::size_t limit) {
-    const auto total_started = std::chrono::steady_clock::now();
-    const auto tree = parse_boolean_query(expression);
+struct QuerySession {
+    QuerySession(SearchCursor cursor_value, std::size_t page_size_value)
+        : cursor(std::move(cursor_value)), page_size(page_size_value),
+          touched(std::chrono::steady_clock::now()) {}
+
+    SearchCursor cursor;
+    std::size_t page_size;
+    std::size_t page = 0;
+    std::uint64_t returned = 0;
+    std::chrono::steady_clock::time_point touched;
+};
+
+class SessionStore {
+public:
+    std::string add(SearchCursor cursor, std::size_t page_size) {
+        cleanup();
+        if (sessions_.size() >= kMaximumSessions) erase_oldest();
+        const auto id = std::to_string(next_id_++);
+        sessions_.emplace(id, QuerySession(std::move(cursor), page_size));
+        return id;
+    }
+
+    QuerySession* find(std::string_view id) {
+        cleanup();
+        const auto found = sessions_.find(std::string(id));
+        if (found == sessions_.end()) return nullptr;
+        found->second.touched = std::chrono::steady_clock::now();
+        return &found->second;
+    }
+
+private:
+    void cleanup() {
+        const auto deadline = std::chrono::steady_clock::now() - kSessionLifetime;
+        for (auto iterator = sessions_.begin(); iterator != sessions_.end();) {
+            if (iterator->second.touched < deadline) iterator = sessions_.erase(iterator);
+            else ++iterator;
+        }
+    }
+
+    void erase_oldest() {
+        auto oldest = sessions_.begin();
+        for (auto iterator = sessions_.begin(); iterator != sessions_.end(); ++iterator) {
+            if (iterator->second.touched < oldest->second.touched) oldest = iterator;
+        }
+        sessions_.erase(oldest);
+    }
+
+    std::unordered_map<std::string, QuerySession> sessions_;
+    std::uint64_t next_id_ = 1;
+};
+
+std::string page_json(const SearchEngine& engine, QuerySession& session,
+                      std::string_view cursor_id, std::string_view expression,
+                      std::string_view tree_json, double setup_ms,
+                      std::chrono::steady_clock::time_point total_started) {
     const auto search_started = std::chrono::steady_clock::now();
-    const auto ids = engine.search_boolean(*tree, limit);
-    const auto search_ms = std::chrono::duration<double, std::milli>(
+    const auto ids = session.cursor.next_page(session.page_size);
+    const auto search_ms = setup_ms + std::chrono::duration<double, std::milli>(
         std::chrono::steady_clock::now() - search_started).count();
 
     struct Result {
@@ -264,17 +324,25 @@ std::string search_json(const SearchEngine& engine, std::string_view expression,
     std::ostringstream output;
     output << std::fixed;
     output.precision(6);
-    output << "{\"ok\":true,\"query\":\"" << json_escape(expression)
-           << "\",\"limit\":" << limit
+    const auto first_rank = session.returned + 1;
+    session.returned += results.size();
+    ++session.page;
+    session.touched = std::chrono::steady_clock::now();
+    output << "{\"ok\":true,\"cursor\":\"" << json_escape(cursor_id)
+           << "\",\"query\":\"" << json_escape(expression)
+           << "\",\"page_size\":" << session.page_size
+           << ",\"page\":" << session.page
            << ",\"returned\":" << results.size()
+           << ",\"returned_total\":" << session.returned
+           << ",\"has_more\":" << (session.cursor.has_more() ? "true" : "false")
            << ",\"search_ms\":" << search_ms
            << ",\"total_ms\":" << total_ms
-           << ",\"query_tree\":" << query_tree_json(*tree)
+           << ",\"query_tree\":" << (tree_json.empty() ? "null" : tree_json)
            << ",\"results\":[";
     for (std::size_t i = 0; i < results.size(); ++i) {
         if (i != 0) output << ',';
         const auto& result = results[i];
-        output << "{\"rank\":" << i + 1
+        output << "{\"rank\":" << first_rank + i
                << ",\"doc_id\":" << result.doc_id
                << ",\"external_id\":\"" << json_escape(result.document.external_id)
                << "\",\"title\":\"" << json_escape(result.document.title)
@@ -284,6 +352,26 @@ std::string search_json(const SearchEngine& engine, std::string_view expression,
     }
     output << "]}";
     return output.str();
+}
+
+std::string start_search_json(const SearchEngine& engine, SessionStore& sessions,
+                              std::string_view expression, std::size_t page_size) {
+    const auto total_started = std::chrono::steady_clock::now();
+    const auto tree = parse_boolean_query(expression);
+    const auto setup_started = std::chrono::steady_clock::now();
+    auto cursor = engine.start_boolean_query(*tree);
+    const auto setup_ms = std::chrono::duration<double, std::milli>(
+        std::chrono::steady_clock::now() - setup_started).count();
+    const auto id = sessions.add(std::move(cursor), page_size);
+    auto* session = sessions.find(id);
+    return page_json(engine, *session, id, expression, query_tree_json(*tree),
+                     setup_ms, total_started);
+}
+
+std::string continue_search_json(const SearchEngine& engine, QuerySession& session,
+                                 std::string_view cursor_id) {
+    return page_json(engine, session, cursor_id, {}, {}, 0.0,
+                     std::chrono::steady_clock::now());
 }
 
 std::string read_request(int socket) {
@@ -304,7 +392,7 @@ std::string read_request(int socket) {
     return request;
 }
 
-void handle_connection(int socket, const SearchEngine& engine,
+void handle_connection(int socket, const SearchEngine& engine, SessionStore& sessions,
                        const std::filesystem::path& web_root) {
     try {
         const auto request = read_request(socket);
@@ -347,6 +435,17 @@ void handle_connection(int socket, const SearchEngine& engine,
             send_response(socket, 200, "OK", "application/json; charset=utf-8", body);
         } else if (path == "/api/search") {
             const auto parameters = parse_parameters(query_string);
+            const auto cursor = parameters.find("cursor");
+            if (cursor != parameters.end() && !cursor->second.empty()) {
+                auto* session = sessions.find(cursor->second);
+                if (session == nullptr) {
+                    send_json_error(socket, 410, "Gone", "search cursor expired");
+                    return;
+                }
+                const auto body = continue_search_json(engine, *session, cursor->second);
+                send_response(socket, 200, "OK", "application/json; charset=utf-8", body);
+                return;
+            }
             const auto query = parameters.find("query");
             if (query == parameters.end() || query->second.empty()) {
                 throw std::invalid_argument("query must not be empty");
@@ -354,7 +453,8 @@ void handle_connection(int socket, const SearchEngine& engine,
             if (query->second.size() > kMaximumQueryBytes) {
                 throw std::invalid_argument("query is too long");
             }
-            const auto body = search_json(engine, query->second, parse_limit(parameters));
+            const auto body = start_search_json(
+                engine, sessions, query->second, parse_page_size(parameters));
             send_response(socket, 200, "OK", "application/json; charset=utf-8", body);
         } else if (path == "/favicon.ico") {
             send_response(socket, 204, "No Content", "image/x-icon", {});
@@ -379,6 +479,7 @@ int serve_web(const WebServerOptions& options) {
 
     const auto load_started = std::chrono::steady_clock::now();
     const SearchEngine engine(options.index_directory);
+    SessionStore sessions;
     const auto load_ms = std::chrono::duration<double, std::milli>(
         std::chrono::steady_clock::now() - load_started).count();
 
@@ -416,7 +517,7 @@ int serve_web(const WebServerOptions& options) {
             throw std::runtime_error("cannot accept HTTP connection");
         }
         Socket client(client_descriptor);
-        handle_connection(client.get(), engine, options.web_root);
+        handle_connection(client.get(), engine, sessions, options.web_root);
     }
     listening_socket = -1;
     return 0;

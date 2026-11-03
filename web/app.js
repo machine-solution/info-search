@@ -8,8 +8,15 @@ const errorBox = document.querySelector("#error-box");
 const stateRoot = document.querySelector("#engine-state");
 const stateText = document.querySelector("#engine-state-text");
 const resultSummary = document.querySelector("#result-summary");
+const pagination = document.querySelector("#pagination");
+const previousPage = document.querySelector("#previous-page");
+const nextPage = document.querySelector("#next-page");
+const pageNumber = document.querySelector("#page-number");
 
 let activeRequest = null;
+let cursor = null;
+let pages = [];
+let currentPage = -1;
 
 const integerFormatter = new Intl.NumberFormat("ru-RU");
 const decimalFormatter = new Intl.NumberFormat("ru-RU", {
@@ -33,17 +40,25 @@ function clearError() {
   errorBox.textContent = "";
 }
 
-function setLoading(loading) {
+function setLoading(loading, resetTree = false) {
   searchButton.disabled = loading;
   searchButton.textContent = loading ? "Ищем…" : "Найти";
-  if (!loading) return;
+  if (!loading) {
+    const current = pages[currentPage];
+    previousPage.disabled = currentPage <= 0;
+    nextPage.disabled = !current ||
+      (currentPage === pages.length - 1 && !current.has_more);
+    return;
+  }
+  previousPage.disabled = true;
+  nextPage.disabled = true;
   resultsRoot.replaceChildren(...Array.from({ length: 3 }, () => {
     const row = document.createElement("div");
     row.className = "loading-row";
     return row;
   }));
   resultSummary.textContent = "Запрос исполняется…";
-  showTreePlaceholder("Строится дерево запроса…");
+  if (resetTree) showTreePlaceholder("Строится дерево запроса…");
 }
 
 function showTreePlaceholder(text) {
@@ -144,6 +159,27 @@ function renderTree(tree) {
   treeRoot.replaceChildren(root);
 }
 
+function renderPage(index) {
+  const data = pages[index];
+  currentPage = index;
+  renderResults(data.results);
+  if (data.query_tree) renderTree(data.query_tree);
+
+  const first = data.results.at(0)?.rank;
+  const last = data.results.at(-1)?.rank;
+  const range = first === undefined ? "0 результатов" :
+    first === last ? `результат ${integerFormatter.format(first)}` :
+      `результаты ${integerFormatter.format(first)}–${integerFormatter.format(last)}`;
+  resultSummary.textContent = `Страница ${integerFormatter.format(data.page)} · ${range} · ` +
+    `retrieval ${decimalFormatter.format(data.search_ms)} мс · ` +
+    `всего ${decimalFormatter.format(data.total_ms)} мс`;
+
+  pagination.hidden = false;
+  pageNumber.textContent = `Страница ${integerFormatter.format(data.page)}`;
+  previousPage.disabled = index === 0;
+  nextPage.disabled = index === pages.length - 1 && !data.has_more;
+}
+
 async function loadMetadata() {
   try {
     const response = await fetch("/api/meta", { cache: "no-store" });
@@ -160,24 +196,28 @@ async function loadMetadata() {
 
 async function runSearch() {
   const query = queryInput.value.trim();
-  const limit = Number.parseInt(limitInput.value, 10);
+  const pageSize = Number.parseInt(limitInput.value, 10);
   if (!query) {
     showError("Введите поисковый запрос.");
     queryInput.focus();
     return;
   }
-  if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
-    showError("Лимит должен быть целым числом от 1 до 100.");
+  if (!Number.isInteger(pageSize) || pageSize < 1 || pageSize > 1000) {
+    showError("Размер страницы должен быть целым числом от 1 до 1000.");
     limitInput.focus();
     return;
   }
 
   activeRequest?.abort();
   activeRequest = new AbortController();
+  cursor = null;
+  pages = [];
+  currentPage = -1;
+  pagination.hidden = true;
   clearError();
-  setLoading(true);
+  setLoading(true, true);
 
-  const parameters = new URLSearchParams({ query, limit: String(limit) });
+  const parameters = new URLSearchParams({ query, page_size: String(pageSize) });
   try {
     const response = await fetch(`/api/search?${parameters}`, {
       cache: "no-store",
@@ -186,11 +226,9 @@ async function runSearch() {
     const data = await response.json();
     if (!response.ok || !data.ok) throw new Error(data.error || "Поиск завершился с ошибкой");
 
-    renderResults(data.results);
-    renderTree(data.query_tree);
-    resultSummary.textContent = `${integerFormatter.format(data.returned)} результатов · ` +
-      `retrieval ${decimalFormatter.format(data.search_ms)} мс · ` +
-      `всего ${decimalFormatter.format(data.total_ms)} мс`;
+    cursor = data.cursor;
+    pages.push(data);
+    renderPage(0);
   } catch (error) {
     if (error.name === "AbortError") return;
     resultsRoot.replaceChildren();
@@ -202,9 +240,48 @@ async function runSearch() {
   }
 }
 
+async function loadNextPage() {
+  if (currentPage + 1 < pages.length) {
+    renderPage(currentPage + 1);
+    return;
+  }
+  const current = pages[currentPage];
+  if (!current?.has_more || !cursor) return;
+
+  activeRequest?.abort();
+  activeRequest = new AbortController();
+  clearError();
+  setLoading(true);
+  try {
+    const parameters = new URLSearchParams({ cursor });
+    const response = await fetch(`/api/search?${parameters}`, {
+      cache: "no-store",
+      signal: activeRequest.signal,
+    });
+    const data = await response.json();
+    if (!response.ok || !data.ok) throw new Error(data.error || "Не удалось получить страницу");
+    pages.push(data);
+    renderPage(pages.length - 1);
+  } catch (error) {
+    if (error.name === "AbortError") return;
+    showError(error.message === "search cursor expired"
+      ? "Сессия поиска истекла. Запустите запрос ещё раз."
+      : error.message);
+    renderPage(currentPage);
+  } finally {
+    if (!activeRequest?.signal.aborted) setLoading(false);
+  }
+}
+
 form.addEventListener("submit", (event) => {
   event.preventDefault();
   runSearch();
 });
+
+previousPage.addEventListener("click", () => {
+  if (currentPage > 0) renderPage(currentPage - 1);
+});
+
+nextPage.addEventListener("click", loadNextPage);
 
 loadMetadata();
