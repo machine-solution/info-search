@@ -15,6 +15,7 @@
 - delta+varint postings, k-way merge и индивидуальное zlib-сжатие текстов;
 - булев язык `AND` / `OR` / `NOT` со скобками и ленивым деревом исполнения;
 - batch-интерфейс: формулы из файла, выдача и latency-статистика в JSONL;
+- локальный web UI с результатами, latency и деревом запроса;
 - реальные URL источников в выдаче;
 - индекс: `index/learning-web-10m/`, 30,11 GB (28,04 GiB);
 - сборка: 7 448,75 с — 2:04:08, peak RSS 278,4 MiB;
@@ -51,6 +52,18 @@ make
 make test
 ./build/wikisearch search --index index/learning-web-10m
 ```
+
+Локальный web-интерфейс:
+
+```bash
+./build/wikisearch serve --index index/learning-web-10m
+```
+
+После загрузки индекса откройте <http://127.0.0.1:8080>. Сервер слушает только
+loopback-интерфейс и не публикует индекс в локальную сеть. Страница показывает
+внутренний `doc_id`, внешний ID, заголовок, ссылку, фрагмент текста, время поиска и
+AST булевой формулы. Лимит выдачи — от 1 до 100 документов. Другой порт и каталог
+статических файлов задаются через `--port` и `--web-root`.
 
 Одиночный запрос:
 
@@ -118,7 +131,9 @@ FineWeb, Wikipedia или MIRACL.
 - `src/index_builder.*` — batch-сегменты, document store и k-way merge;
 - `src/query_parser.*` — lexer, грамматика и AST булевой формулы;
 - `src/search_engine.*` — lexicon, postings cursors и ленивые AND/OR/NOT iterators;
+- `src/web_server.*` — loopback HTTP API и сериализация AST/выдачи в JSON;
 - `src/main.cpp` — CLI и формат выдачи;
+- `web/` — статический интерфейс без внешних зависимостей;
 - `scripts/` — адаптеры и воспроизводимые сборки;
 - `tests/` — smoke corpus и benchmark-запросы;
 - `docs/` — техническая документация формата и архитектуры;

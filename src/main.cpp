@@ -1,5 +1,6 @@
 #include "index_builder.hpp"
 #include "search_engine.hpp"
+#include "web_server.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -31,6 +32,8 @@ void usage(std::ostream& output) {
            << "Search:\n"
            << "  wikisearch search --index DIR [--query EXPR] [--top N]\n"
            << "  EXPR supports AND, OR, NOT, parentheses, and implicit AND.\n\n"
+           << "Local web UI:\n"
+           << "  wikisearch serve --index DIR [--port N] [--web-root DIR]\n\n"
            << "Batch JSONL:\n"
            << "  wikisearch batch --index DIR --input FILE|- --output FILE|- [--top N]\n";
 }
@@ -156,6 +159,28 @@ int search_command(int argc, char** argv) {
         print_results(engine, query, top);
     }
     return 0;
+}
+
+int serve_command(int argc, char** argv) {
+    wikisearch::WebServerOptions options;
+    for (int i = 2; i < argc; ++i) {
+        const std::string_view argument = argv[i];
+        if (argument == "--index") {
+            options.index_directory = require_value(i, argc, argv, argument);
+        } else if (argument == "--port") {
+            const auto port = parse_positive(require_value(i, argc, argv, argument), argument);
+            if (port > 65535) throw std::invalid_argument("--port must be at most 65535");
+            options.port = static_cast<std::uint16_t>(port);
+        } else if (argument == "--web-root") {
+            options.web_root = require_value(i, argc, argv, argument);
+        } else {
+            throw std::invalid_argument("unknown serve option: " + std::string(argument));
+        }
+    }
+    if (options.index_directory.empty()) {
+        throw std::invalid_argument("serve requires --index");
+    }
+    return wikisearch::serve_web(options);
 }
 
 std::string json_escape(std::string_view value) {
@@ -342,6 +367,7 @@ int main(int argc, char** argv) {
         if (command == "build") return build_command(argc, argv);
         if (command == "search") return search_command(argc, argv);
         if (command == "batch") return batch_command(argc, argv);
+        if (command == "serve") return serve_command(argc, argv);
         if (command == "--help" || command == "help") {
             usage(std::cout);
             return 0;

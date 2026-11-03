@@ -434,7 +434,12 @@ std::vector<std::uint32_t> SearchEngine::search_boolean(
     std::string_view expression, std::size_t limit) const {
     if (limit == 0) return {};
     const auto query = parse_boolean_query(expression);
+    return search_boolean(*query, limit);
+}
 
+std::vector<std::uint32_t> SearchEngine::search_boolean(
+    const QueryNode& query, std::size_t limit) const {
+    if (limit == 0) return {};
     std::function<std::unique_ptr<DocIterator>(const QueryNode&)> compile;
     compile = [&](const QueryNode& node) -> std::unique_ptr<DocIterator> {
         switch (node.type) {
@@ -493,7 +498,7 @@ std::vector<std::uint32_t> SearchEngine::search_boolean(
         throw std::logic_error("unknown boolean query node");
     };
 
-    auto iterator = compile(*query);
+    auto iterator = compile(query);
     std::vector<std::uint32_t> result;
     result.reserve(limit);
     while (iterator->valid() && result.size() < limit) {

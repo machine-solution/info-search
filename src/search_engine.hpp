@@ -10,6 +10,8 @@
 
 namespace wikisearch {
 
+struct QueryNode;
+
 struct StoredDocument {
     std::string external_id;
     std::string title;
@@ -22,6 +24,8 @@ public:
     explicit SearchEngine(const std::filesystem::path& index_directory);
     std::vector<std::uint32_t> search_boolean(
         std::string_view expression, std::size_t limit) const;
+    std::vector<std::uint32_t> search_boolean(
+        const QueryNode& query, std::size_t limit) const;
     StoredDocument document(std::uint32_t doc_id) const;
     std::uint64_t document_count() const { return document_count_; }
     std::size_t term_count() const { return lexicon_.size(); }

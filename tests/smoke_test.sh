@@ -2,7 +2,15 @@
 set -euo pipefail
 
 test_dir="$(mktemp -d)"
-trap 'rm -rf "$test_dir"' EXIT
+server_pid=""
+cleanup() {
+  if [[ -n "$server_pid" ]]; then
+    kill "$server_pid" 2>/dev/null || true
+    wait "$server_pid" 2>/dev/null || true
+  fi
+  rm -rf "$test_dir"
+}
+trap cleanup EXIT
 
 ./build/wikisearch build --input tests/fixtures/tiny.jsonl --index "$test_dir/index" --limit 4 --batch-size 2
 
@@ -80,6 +88,36 @@ grep -q '"external_id":"2#0"' "$test_dir/results.jsonl"
 grep -q '"external_id":"3#0"' "$test_dir/results.jsonl"
 grep -q '"external_id":"4#0"' "$test_dir/results.jsonl"
 grep -q '"type":"summary","queries":2,"succeeded":2,"failed":0' "$test_dir/results.jsonl"
+
+server_port="$((20000 + ($$ % 20000)))"
+./build/wikisearch serve --index "$test_dir/index" --web-root web \
+  --port "$server_port" >"$test_dir/server.log" 2>&1 &
+server_pid="$!"
+
+for _ in {1..50}; do
+  if curl -fsS "http://127.0.0.1:$server_port/api/meta" \
+      >"$test_dir/meta.json" 2>/dev/null; then
+    break
+  fi
+  sleep 0.1
+done
+grep -q '"documents":4' "$test_dir/meta.json"
+grep -q '"terms":' "$test_dir/meta.json"
+
+curl -fsS --get "http://127.0.0.1:$server_port/api/search" \
+  --data-urlencode 'query=санкт AND (музей OR река)' \
+  --data-urlencode 'limit=10' >"$test_dir/web-results.json"
+grep -q '"query_tree":{"type":"AND"' "$test_dir/web-results.json"
+grep -q '"type":"OR"' "$test_dir/web-results.json"
+grep -q '"title":"Эрмитаж"' "$test_dir/web-results.json"
+grep -q '"title":"Нева"' "$test_dir/web-results.json"
+grep -q '"doc_id":2' "$test_dir/web-results.json"
+
+status="$(curl -sS -o "$test_dir/web-error.json" -w '%{http_code}' --get \
+  "http://127.0.0.1:$server_port/api/search" \
+  --data-urlencode 'query=москва AND (' --data-urlencode 'limit=10')"
+[[ "$status" == "400" ]]
+grep -q '"ok":false' "$test_dir/web-error.json"
 
 echo "smoke test passed"
 
